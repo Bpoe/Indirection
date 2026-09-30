@@ -120,6 +120,7 @@ app.MapControllers();
 app.Run();
 ```
 Do not recreate the older `Startup.Configure()` hosting model. Only dependency registration is moved into `Startup.ConfigureServices`.
+For portable releases, `dotnet Indirection.dll --migrate` is an explicit maintenance mode in the same application project. It applies the existing EF Core migrations using the configured SQLite connection and exits without starting HTTP. Repeated execution applies only pending migrations; failures produce a nonzero exit code. This command does not require the API key, because it does not start the web host. Normal application startup does not run migrations.
 ## Data model
 The initial model should contain only fields needed by the current API.
 At minimum:
@@ -184,6 +185,8 @@ Do not add PostgreSQL or SQL Server packages, migration sets, CI jobs, or compat
 SQLite schema migrations may differ from future provider migrations. If another database is adopted, provider-specific migrations can be created at that point.
 ### SQLite durability
 The SQLite database file is authoritative persistent state. Production deployment must place it on persistent storage rather than ephemeral container storage.
+### Portable release packaging
+Publish one framework-dependent, runtime-neutral archive with `UseAppHost=false` and no runtime identifier. Users invoke both the server and migration command through `dotnet Indirection.dll`, with the ASP.NET Core Runtime 10 installed. Retain the dependency-provided native SQLite assets for supported operating systems and architectures; the host selects its matching assets. Do not ship a platform-specific EF migration bundle, SDK, runtime, database, or secrets. Portability is limited to platforms supported by both .NET 10 and the packaged SQLite native libraries.
 ## Caching
 Indirection uses `HybridCache` directly.
 Initially, HybridCache uses local process memory only.

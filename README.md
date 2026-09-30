@@ -80,20 +80,20 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The release attaches `indirection-v0.1.0-linux-x64.tar.gz` (named for the tag). It contains the published application, default configuration, dependencies, and an EF migration bundle; it contains no database or credentials. Publishing uses GitHub's built-in token: validation has `contents: read`, and only the release-creation job has `contents: write`. No personal access token is needed.
+The release attaches `indirection-v0.1.0.tar.gz` (named for the tag). It contains the published application, default configuration, and dependencies, including native SQLite assets for multiple platforms; it contains no database or credentials. Publishing uses GitHub's built-in token: validation has `contents: read`, and only the release-creation job has `contents: write`. No personal access token is needed.
 
-The Linux x64 artifact is framework-dependent and requires the **ASP.NET Core Runtime 10.0** (including the .NET runtime), not the SDK. Extract into an application directory and run from there; the database directory must already exist on persistent storage and be writable by the application account:
+The archive is runtime-neutral and framework-dependent. It requires the **ASP.NET Core Runtime 10.0** (including the .NET runtime), not the SDK. One archive serves platforms supported by both .NET 10 and the packaged SQLite libraries, including Windows, Linux, and macOS on x64/Arm64. Keep the `runtimes` directory intact. Extract into an application directory and run from there; the database directory must already exist on persistent storage and be writable by the application account. This example uses Bash; on Windows, set the same environment variables with PowerShell and use an absolute Windows database path:
 
 ```bash
 mkdir -p indirection
-tar -xzf indirection-v0.1.0-linux-x64.tar.gz -C indirection
+tar -xzf indirection-v0.1.0.tar.gz -C indirection
 cd indirection
 export DOTNET_ENVIRONMENT=Production
 export Authentication__ApiKey="$(openssl rand -base64 32)" # Or supply your existing deployment secret.
 export Database__Provider=Sqlite
 export ConnectionStrings__Urls='Data Source=/var/lib/indirection/urls.db'
-./efbundle --connection "$ConnectionStrings__Urls"
+dotnet Indirection.dll --migrate
 dotnet Indirection.dll --urls http://127.0.0.1:5080
 ```
 
-The bundled migration command initializes or upgrades the database without a source checkout. Back up the database and stop the application before upgrading, then apply the new bundle and restart. Keep state outside the extracted release directory and expose deployed management requests through HTTPS as described above.
+The `--migrate` command initializes or upgrades the database without a source checkout, SDK, or platform-specific migration executable. It uses the same configuration as the server, applies only pending migrations, and exits without starting HTTP; failures return a nonzero exit code. Migration mode does not require an API key. Back up the database and stop the application before upgrading, run the new release's migration command, then restart. Keep state outside the extracted release directory and expose deployed management requests through HTTPS as described above.
