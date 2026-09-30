@@ -1,0 +1,12 @@
+{
+  "platformOptions": {
+    "Coverlet": {
+      "include": "[Indirection]*",
+      "excludeByFile": "**/Data/Migrations/*.cs",
+      "format": "cobertura,json",
+      "threshold": 96,
+      "thresholdType": "line,branch",
+      "thresholdStat": "Total"
+    }
+  }
+}

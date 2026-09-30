@@ -1,0 +1,10 @@
+<Project Sdk="MSTest.Sdk/4.4.0">
+  <PropertyGroup>
+    <TestingExtensionsProfile>None</TestingExtensionsProfile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../prod/Indirection/Indirection.csproj" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.9" />
+    <PackageReference Include="coverlet.MTP" Version="10.1.0" />
+  </ItemGroup>
+</Project>

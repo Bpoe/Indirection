@@ -427,3 +427,9 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Local SQLite state and sidecar files
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
