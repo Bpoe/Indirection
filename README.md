@@ -68,3 +68,32 @@ dotnet test --project src/test/Indirection.DeploymentTests -c Release --no-build
 ```
 
 The suite checks health and the complete create/read/redirect/update/redirect/delete/404 lifecycle, including mixed casing, nested codes, and warmed-cache updates. Each run uses a unique `synthetic/{guid}/nested` code and cleans up in `finally`, so concurrent runs are isolated. Run this same command after deployment or on a scheduler for synthetics. When neither environment variable is supplied, deployment tests are skipped; supplying only one fails configuration. CI runs only the local suite and never targets a live deployment implicitly.
+
+GitHub Actions runs on pull requests targeting `main` and pushes to `main`. It installs .NET 10, caches NuGet packages using the project/configuration files as the cache key, restores, builds the complete solution in Release, and runs only `Indirection.Tests` with the existing coverage configuration. Both line and branch coverage must reach 96%, exceeding the design's >95% requirement; coverage reports are retained as workflow artifacts.
+
+Pushing a version tag matching `v*` runs the same validation before publishing a GitHub Release. After these workflow changes are committed and pushed, create the first release from the intended commit:
+
+```bash
+git switch main
+git pull --ff-only origin main
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The release attaches `indirection-v0.1.0-linux-x64.tar.gz` (named for the tag). It contains the published application, default configuration, dependencies, and an EF migration bundle; it contains no database or credentials. Publishing uses GitHub's built-in token: validation has `contents: read`, and only the release-creation job has `contents: write`. No personal access token is needed.
+
+The Linux x64 artifact is framework-dependent and requires the **ASP.NET Core Runtime 10.0** (including the .NET runtime), not the SDK. Extract into an application directory and run from there; the database directory must already exist on persistent storage and be writable by the application account:
+
+```bash
+mkdir -p indirection
+tar -xzf indirection-v0.1.0-linux-x64.tar.gz -C indirection
+cd indirection
+export DOTNET_ENVIRONMENT=Production
+export Authentication__ApiKey="$(openssl rand -base64 32)" # Or supply your existing deployment secret.
+export Database__Provider=Sqlite
+export ConnectionStrings__Urls='Data Source=/var/lib/indirection/urls.db'
+./efbundle --connection "$ConnectionStrings__Urls"
+dotnet Indirection.dll --urls http://127.0.0.1:5080
+```
+
+The bundled migration command initializes or upgrades the database without a source checkout. Back up the database and stop the application before upgrading, then apply the new bundle and restart. Keep state outside the extracted release directory and expose deployed management requests through HTTPS as described above.

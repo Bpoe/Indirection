@@ -1,8 +1,11 @@
-name: CI
+name: CI and release
 
 on:
   push:
+    branches: [main]
+    tags: ['v*']
   pull_request:
+    branches: [main]
 
 permissions:
   contents: read
@@ -11,10 +14,18 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+            Directory.Build.props
+            global.json
+            dotnet-tools.json
       - run: dotnet restore Indirection.sln
       - run: dotnet build Indirection.sln -c Release --no-restore
       - name: Test and enforce line and branch coverage
@@ -28,3 +39,46 @@ jobs:
           name: coverage
           path: artifacts/coverage
           if-no-files-found: error
+      - name: Publish Linux x64 application
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: >-
+          dotnet publish src/prod/Indirection -c Release -r linux-x64
+          --self-contained false -p:DebugType=None -p:DebugSymbols=false
+          -o artifacts/publish
+      - name: Bundle SQLite migrations
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          dotnet tool restore
+          dotnet ef migrations bundle --project src/prod/Indirection --configuration Release --no-build --target-runtime linux-x64 --output artifacts/publish/efbundle
+      - name: Package release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: tar -czf "artifacts/indirection-${RELEASE_TAG}-linux-x64.tar.gz" -C artifacts/publish .
+      - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          name: release-linux-x64
+          path: artifacts/indirection-*-linux-x64.tar.gz
+          if-no-files-found: error
+
+  release:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-linux-x64
+          path: artifacts
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: >-
+          gh release create "$RELEASE_TAG"
+          "artifacts/indirection-${RELEASE_TAG}-linux-x64.tar.gz"
+          --verify-tag --title "$RELEASE_TAG" --generate-notes
