@@ -1,0 +1,10 @@
+**
+!artifacts/
+!artifacts/portable/
+!artifacts/portable/**
+!docker/
+!docker/appsettings.json
+**/*.db
+**/*.db-*
+**/*.env
+**/appsettings.*.json

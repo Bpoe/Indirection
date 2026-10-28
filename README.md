@@ -71,7 +71,7 @@ The suite checks health and the complete create/read/redirect/update/redirect/de
 
 GitHub Actions runs on pull requests targeting `main` and pushes to `main`. It installs .NET 10, caches NuGet packages using the project/configuration files as the cache key, restores, builds the complete solution in Release, and runs only `Indirection.Tests` with the existing coverage configuration. Both line and branch coverage must reach 96%, exceeding the design's >95% requirement; coverage reports are retained as workflow artifacts.
 
-Pushing a version tag matching `v*` runs the same validation before publishing a GitHub Release. After these workflow changes are committed and pushed, create the first release from the intended commit:
+Pushing a version tag matching `v*` runs the same validation before publishing a multi-platform image to GHCR and then a GitHub Release. Release creation requires successful tests and Docker publishing. After these workflow changes are committed and pushed, create the first release from the intended commit:
 
 ```bash
 git switch main
@@ -80,13 +80,13 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The release attaches `indirection-v0.1.0.tar.gz` (named for the tag). It contains the published application, default configuration, and dependencies, including native SQLite assets for multiple platforms; it contains no database or credentials. Publishing uses GitHub's built-in token: validation has `contents: read`, and only the release-creation job has `contents: write`. No personal access token is needed.
+The release attaches `indirection-v0.1.0.zip` (named for the tag). It contains the published application, default configuration, and dependencies, including native SQLite assets for multiple platforms; it contains no database or credentials. Publishing uses GitHub's built-in token: validation has `contents: read`, the Docker job alone has `packages: write`, and only the release-creation job has `contents: write`. No personal access token is needed.
 
 The archive is runtime-neutral and framework-dependent. It requires the **ASP.NET Core Runtime 10.0** (including the .NET runtime), not the SDK. One archive serves platforms supported by both .NET 10 and the packaged SQLite libraries, including Windows, Linux, and macOS on x64/Arm64. Keep the `runtimes` directory intact. Extract into an application directory and run from there; the database directory must already exist on persistent storage and be writable by the application account. This example uses Bash; on Windows, set the same environment variables with PowerShell and use an absolute Windows database path:
 
 ```bash
 mkdir -p indirection
-tar -xzf indirection-v0.1.0.tar.gz -C indirection
+unzip indirection-v0.1.0.zip -d indirection
 cd indirection
 export DOTNET_ENVIRONMENT=Production
 export Authentication__ApiKey="$(openssl rand -base64 32)" # Or supply your existing deployment secret.
@@ -97,3 +97,53 @@ dotnet Indirection.dll --urls http://127.0.0.1:5080
 ```
 
 The `--migrate` command initializes or upgrades the database without a source checkout, SDK, or platform-specific migration executable. It uses the same configuration as the server, applies only pending migrations, and exits without starting HTTP; failures return a nonzero exit code. Migration mode does not require an API key. Back up the database and stop the application before upgrading, run the new release's migration command, then restart. Keep state outside the extracted release directory and expose deployed management requests through HTTPS as described above.
+
+Docker images support Linux amd64 and arm64 and use the .NET 10 Azure Linux distroless ASP.NET Core runtime. CI packages the same published binaries from the release ZIP into both images without restoring, compiling, or publishing inside Docker. Pull the published image or publish once locally and package it from the repository root:
+
+```bash
+docker pull ghcr.io/bpoe/indirection:latest
+dotnet publish src/prod/Indirection -c Release --self-contained false \
+  -p:UseAppHost=false -p:DebugType=None -p:DebugSymbols=false -o artifacts/portable
+docker build -t indirection:local .
+# Optional multi-platform build (requires a Buildx builder):
+docker buildx build --platform linux/amd64,linux/arm64 -t indirection:local --output type=oci,dest=indirection.oci.tar .
+```
+
+A stable `v0.1.0` tag publishes `ghcr.io/bpoe/indirection` tags `0.1.0`, `0.1`, `0`, and `latest`. Prereleases publish their full version (for example `0.2.0-rc.1`) without updating stable aliases or `latest`. Pin a full version for controlled upgrades. Publishing uses Docker's [metadata-action](https://github.com/docker/metadata-action) for version tags and [Buildx](https://github.com/docker/build-push-action) for multi-platform builds and caching.
+
+The included `compose.yaml` exposes HTTP on port 8080 and keeps SQLite in a named volume mounted at `/data`. Supply an API key at runtime, apply migrations explicitly, then start:
+
+```bash
+export Authentication__ApiKey="$(openssl rand -base64 32)" # Or your existing deployment secret.
+docker compose pull
+docker compose run --rm --no-deps indirection --migrate
+docker compose up -d
+curl --fail http://localhost:8080/health
+```
+
+Keep the key in your deployment's secret store and supply it again when recreating the container. Migrations do not require a key. Containers run as the runtime image's built-in non-root user, with `/app` as the working directory and a writable `/data`. The runtime contains no shell or package manager. Startup never applies migrations automatically.
+
+The container includes `docker/appsettings.json` as `/app/appsettings.json`, defaulting to SQLite with `Data Source=/data/urls.db`. The portable ZIP retains its original `Data Source=urls.db` default. To override the complete container configuration, copy `docker/appsettings.json` to a local `appsettings.json`, edit it, and uncomment the read-only file mount in `compose.yaml`. For a direct Docker run, use `--mount type=bind,src="$PWD/appsettings.json",dst=/app/appsettings.json,readonly` on both migration and server containers. Standard ASP.NET Core configuration precedence applies, including environment variables and command-line arguments; neither the image nor Compose sets database-provider or connection-string environment variables. A configured alternative database path is used as supplied; mount writable persistent storage at that location, accessible to UID 1654.
+
+Without Compose, use the same named volume for migrations and serving:
+
+```bash
+docker volume create indirection-data
+docker run --rm -v indirection-data:/data ghcr.io/bpoe/indirection:latest --migrate
+docker run -d --name indirection --restart unless-stopped -p 8080:8080 \
+  -e Authentication__ApiKey -v indirection-data:/data ghcr.io/bpoe/indirection:latest
+```
+
+Mount the entire data directory so SQLite journal, WAL, and shared-memory files persist with the database. A fresh named volume inherits the image directory's non-root ownership; provision bind mounts or existing volumes with equivalent write permissions. Back up SQLite consistently while the service is stopped, including its sidecar files. `docker compose down` retains the data volume; `docker compose down -v` deletes it.
+
+To upgrade, stop the service, back up the database, pull the new image, explicitly migrate using that image, and recreate the container while retaining the volume and API key:
+
+```bash
+docker compose stop
+# Back up the data volume before continuing.
+docker compose pull
+docker compose run --rm --no-deps indirection --migrate
+docker compose up -d
+```
+
+If using a pinned image tag, update it in `compose.yaml` before pulling. Check `/health` and the deployment verification suite after upgrading. Route deployed HTTP through HTTPS as described above.
