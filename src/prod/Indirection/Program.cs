@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 var migrate = args.Contains("--migrate", StringComparer.Ordinal);
 var builder = WebApplication.CreateBuilder(args.Where(argument => argument != "--migrate").ToArray());
+Startup.ConfigureConfiguration(builder.Configuration);
 Startup.ConfigureServices(builder.Services, builder.Configuration);
 
 await using var app = builder.Build();
