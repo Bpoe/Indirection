@@ -49,16 +49,61 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           RELEASE_TAG: ${{ github.ref_name }}
-        run: tar -czf "artifacts/indirection-${RELEASE_TAG}.tar.gz" -C artifacts/portable .
+        run: |
+          cd artifacts/portable
+          zip -r "../indirection-${RELEASE_TAG}.zip" .
       - uses: actions/upload-artifact@v4
         if: startsWith(github.ref, 'refs/tags/v')
         with:
           name: release-portable
-          path: artifacts/indirection-*.tar.gz
+          path: artifacts/indirection-*.zip
           if-no-files-found: error
 
-  release:
+  docker:
     needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-portable
+          path: artifacts
+      - name: Extract published application
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: unzip "artifacts/indirection-${RELEASE_TAG}.zip" -d artifacts/portable
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v6
+        id: meta
+        with:
+          images: ghcr.io/bpoe/indirection
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  release:
+    needs: [test, docker]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -75,5 +120,5 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: >-
           gh release create "$RELEASE_TAG"
-          "artifacts/indirection-${RELEASE_TAG}.tar.gz"
+          "artifacts/indirection-${RELEASE_TAG}.zip"
           --verify-tag --title "$RELEASE_TAG" --generate-notes

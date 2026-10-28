@@ -1,0 +1,15 @@
+services:
+  indirection:
+    image: ghcr.io/bpoe/indirection:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - Authentication__ApiKey
+    volumes:
+      - data:/data
+      # Optional complete configuration override:
+      # - ./appsettings.json:/app/appsettings.json:ro
+    restart: unless-stopped
+
+volumes:
+  data:
