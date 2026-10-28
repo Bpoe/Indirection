@@ -6,6 +6,9 @@ namespace Indirection;
 
 public static class Startup
 {
+    public static void ConfigureConfiguration(IConfigurationBuilder configuration, string secretsDirectory = "/run/secrets")
+        => configuration.AddKeyPerFile(secretsDirectory, optional: true);
+
     public static void ConfigureServices(IServiceCollection services, IConfiguration configuration)
     {
         if (!string.Equals(configuration["Database:Provider"], "Sqlite", StringComparison.OrdinalIgnoreCase))

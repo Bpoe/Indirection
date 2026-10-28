@@ -22,6 +22,14 @@ dotnet run --project src/prod/Indirection -c Release --no-build --no-launch-prof
 
 Keep the generated key in the shell for the examples below, or supply a secret through your deployment's secret store. No key is included in application configuration. Startup rejects a missing/blank key or an unsupported provider. Use at least 32 cryptographically random bytes for production keys. Serve deployed management endpoints over HTTPS, normally through your hosting platform/reverse proxy; the HTTP binding above is for local use.
 
+### File-based secrets
+
+Indirection optionally loads configuration from `/run/secrets` using ASP.NET Core's Key-Per-File provider. Each file's contents supply its value; `__` in the filename maps to `:` for any configuration key. For example, mount a file containing your API key at `/run/secrets/Authentication__ApiKey` to set `Authentication:ApiKey`. No directory or configuration changes are required when running without mounted secrets.
+
+Files take precedence over all standard sources, including command-line arguments. Otherwise, standard precedence is preserved: command-line arguments, environment variables, `appsettings.{Environment}.json`, then `appsettings.json` (highest to lowest). Restart the application after rotating secret files.
+
+### Application behavior
+
 SQLite is the only supported provider. `appsettings.json` defaults to `Data Source=urls.db`; relative SQLite paths resolve against the process working directory. An absolute `ConnectionStrings__Urls` avoids ambiguity between the EF CLI and host. Put the database and its sidecar files on persistent, writable storage and back them up. Apply migrations explicitly before starting/upgrading; the application does not migrate at startup. `dotnet ef migrations has-pending-model-changes --project src/prod/Indirection` checks model drift.
 
 The production application is one project under `src/prod/Indirection`. Controllers access EF Core and HybridCache directly. Caches are lazy, local and disposable, use HybridCache's default expiration settings, and never retain missing lookups. Successful writes save first and then invalidate the normalized code. Operate one application instance; out-of-band database writes do not invalidate its cache. `/health` is an anonymous liveness check returning `200` with `Healthy`; it does not probe database readiness.
