@@ -28,6 +28,25 @@ Indirection optionally loads configuration from `/run/secrets` using ASP.NET Cor
 
 Files take precedence over all standard sources, including command-line arguments. Otherwise, standard precedence is preserved: command-line arguments, environment variables, `appsettings.{Environment}.json`, then `appsettings.json` (highest to lowest). Restart the application after rotating secret files.
 
+### Admin UI
+
+The app includes a tiny, dependency-free browser UI at `/admin` (also `/admin/`).
+The static HTML/CSS/JavaScript lives under `src/prod/Indirection/wwwroot/admin`
+and is included in normal .NET builds, portable releases, and container images.
+No Node runtime, frontend build step, database migration, or extra API endpoint is needed.
+
+Navigate to `https://your-indirection-host/admin` and enter the same API key
+used by the management API. The UI lists, searches, creates, edits, copies, and
+deletes short links using the existing `/api/v1/links` endpoints. Codes can
+contain nested paths; a code itself cannot be renamed.
+
+The page and its static assets are publicly served; **the management API is
+still protected by `X-Api-Key`**. The browser keeps the key only in page memory,
+not cookies or local/session storage; refreshing or disconnecting forgets it.
+Use HTTPS in production. `/admin` and `/admin/*` are reserved for the UI,
+and therefore should not be used as redirect codes. The UI rejects these
+and other known application route collisions.
+
 ### Application behavior
 
 SQLite is the only supported provider. `appsettings.json` defaults to `Data Source=urls.db`; relative SQLite paths resolve against the process working directory. An absolute `ConnectionStrings__Urls` avoids ambiguity between the EF CLI and host. Put the database and its sidecar files on persistent, writable storage and back them up. Apply migrations explicitly before starting/upgrading; the application does not migrate at startup. `dotnet ef migrations has-pending-model-changes --project src/prod/Indirection` checks model drift.
