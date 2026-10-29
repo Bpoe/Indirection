@@ -2,7 +2,10 @@
 'use strict';
 
 const $ = id => document.getElementById(id);
-const state = { apiKey: null, links: [], editing: null, toastTimer: null, session: new AbortController() };
+const state = {
+  apiKey: null, links: [], editing: null, toastTimer: null, session: new AbortController(),
+  pendingMutation: false, editorGeneration: 0, loadGeneration: 0
+};
 const endpoint = '/api/v1/links';
 const origin = window.location.origin;
 
@@ -93,6 +96,7 @@ function showApp() {
 function showLogin() {
   state.session.abort();
   state.session = new AbortController();
+  state.loadGeneration++;
   state.apiKey = null;
   state.links = [];
   state.editing = null;
@@ -113,7 +117,14 @@ function showLogin() {
 }
 
 async function loadLinks() {
-  const response = await request(endpoint);
+  const generation = ++state.loadGeneration;
+  let response;
+  try { response = await request(endpoint); }
+  catch (e) {
+    if (generation !== state.loadGeneration) return;
+    throw e;
+  }
+  if (generation !== state.loadGeneration) return;
   if (!Array.isArray(response)) throw new Error('The server returned an unexpected links response.');
   state.links = response.sort((a, b) => a.code.localeCompare(b.code));
   render();
@@ -191,13 +202,16 @@ async function copyUrl(code) {
 }
 
 function openEditor(link = null) {
+  state.editorGeneration++;
   state.editing = link;
   $('editorForm').reset();
   showError('editorError', '');
   $('editorEyebrow').textContent = link ? 'EDIT REDIRECT' : 'CREATE REDIRECT';
   $('editorTitle').textContent = link ? 'Edit link' : 'New link';
   $('saveBtn').textContent = link ? 'Save changes' : 'Create link';
+  $('saveBtn').disabled = state.pendingMutation;
   $('deleteBtn').hidden = !link;
+  $('deleteBtn').disabled = state.pendingMutation;
   $('code').disabled = Boolean(link);
   $('code').value = link?.code ?? '';
   $('destination').value = link?.destination ?? '';
@@ -233,15 +247,22 @@ function validateCode(code) {
   return '';
 }
 
+function setMutationPending(pending) {
+  state.pendingMutation = pending;
+  $('saveBtn').disabled = pending;
+  $('deleteBtn').disabled = pending;
+}
+
 async function saveLink(event) {
   event.preventDefault();
-  const code = getCode();
+  if (state.pendingMutation) return;
+  const editorGeneration = state.editorGeneration;
+  const code = state.editing?.code ?? getCode();
   const destination = $('destination').value.trim();
   const error = validateCode(code);
   if (error) { showError('editorError', error); return; }
   if (!destination) { showError('editorError', 'Enter a destination.'); return; }
-  const button = $('saveBtn');
-  button.disabled = true;
+  setMutationPending(true);
   showError('editorError', '');
   try {
     await request(apiPath(code), {
@@ -250,34 +271,43 @@ async function saveLink(event) {
       body: JSON.stringify({ destination })
     });
     await loadLinks();
-    $('editor').close();
-    showToast(state.editing ? 'Link updated' : 'Link created');
+    if (editorGeneration === state.editorGeneration && $('editor').open) {
+      $('editor').close();
+      showToast(state.editing ? 'Link updated' : 'Link created');
+    }
   } catch (e) {
     if (e.name === 'AbortError') return;
     if (e.status === 401) {
       showLogin();
       showError('loginError', 'Your API key is no longer valid.');
-    } else showError('editorError', e.message);
-  } finally { button.disabled = false; }
+    } else if (editorGeneration === state.editorGeneration && $('editor').open) {
+      showError('editorError', e.message);
+    }
+  } finally { setMutationPending(false); }
 }
 
 async function deleteLink() {
+  if (state.pendingMutation) return;
   const link = state.editing;
   if (!link || !confirm('Delete /' + link.code + '?\n\nThis will immediately stop the short link from redirecting.')) return;
-  const button = $('deleteBtn');
-  button.disabled = true;
+  const editorGeneration = state.editorGeneration;
+  setMutationPending(true);
   try {
     await request(apiPath(link.code), { method: 'DELETE' });
     await loadLinks();
-    $('editor').close();
-    showToast('Link deleted');
+    if (editorGeneration === state.editorGeneration && $('editor').open) {
+      $('editor').close();
+      showToast('Link deleted');
+    }
   } catch (e) {
     if (e.name === 'AbortError') return;
     if (e.status === 401) {
       showLogin();
       showError('loginError', 'Your API key is no longer valid.');
-    } else showError('editorError', e.message);
-  } finally { button.disabled = false; }
+    } else if (editorGeneration === state.editorGeneration && $('editor').open) {
+      showError('editorError', e.message);
+    }
+  } finally { setMutationPending(false); }
 }
 
 $('loginForm').addEventListener('submit', async event => {
