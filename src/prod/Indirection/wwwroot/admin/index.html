@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Indirection · Links</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231c2933'/%3E%3Cpath d='M20 43 44 19M25 19h19v19' stroke='white' stroke-width='5' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="brand" aria-label="Indirection">
+        <span class="brand-symbol" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M6 18 18 6M9 6h9v9" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <span>indirection<span class="brand-dot">.</span></span>
+      </div>
+      <div class="header-right" id="headerRight" hidden>
+        <span class="hostname" id="hostname"></span>
+        <button class="key-button" type="button" id="disconnectBtn" title="Disconnect and forget the API key">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+          Disconnect
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="page" id="app" hidden>
+    <div class="eyebrow">YOUR WORKSPACE <span class="eyebrow-line"></span> LINK MANAGEMENT</div>
+    <div class="page-heading">
+      <div>
+        <h1>Links</h1>
+        <p>Manage your short URLs and where they lead.</p>
+      </div>
+      <button class="button button-primary" id="createBtn" type="button">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        New link
+      </button>
+    </div>
+
+    <section class="list-panel" aria-label="Short links">
+      <div class="list-toolbar">
+        <div class="list-heading">
+          <h2>All links</h2>
+          <span class="count-pill" id="count">0</span>
+        </div>
+        <div class="toolbar-actions">
+          <label class="search-wrap">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg>
+            <input id="search" type="search" placeholder="Search links..." autocomplete="off" aria-label="Search links">
+            <span class="shortcut" aria-hidden="true">⌘ K</span>
+          </label>
+          <button class="icon-button refresh" type="button" id="refreshBtn" aria-label="Refresh links" title="Refresh links">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.7 9A7 7 0 0 1 18.2 7L20 12M4 12l1.8 5A7 7 0 0 0 18.3 15"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table id="linkTable">
+          <thead><tr><th scope="col">SHORT LINK</th><th scope="col">DESTINATION</th><th scope="col">CREATED</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+          <tbody id="linkRows"></tbody>
+        </table>
+      </div>
+      <div class="empty-state" id="emptyState" hidden>
+        <div class="empty-art" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m10 13 4-4m-6 7-2 2a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0m2 1 2-2a4 4 0 0 1 6 6l-5 5a4 4 0 0 1-6 0" transform="translate(2 1) scale(.84)"/></svg></div>
+        <h3 id="emptyTitle">No links yet</h3>
+        <p id="emptySubtitle">Create your first link to get started.</p>
+        <button type="button" class="button button-secondary" id="emptyCreateBtn">Create a link</button>
+      </div>
+      <div class="table-footer">
+        <span id="resultCount">0 links</span>
+        <span>Showing all matching links</span>
+      </div>
+    </section>
+    <div class="page-footnote">Codes are case-insensitive and can include nested paths, like <code>docs/start</code>.</div>
+  </main>
+
+  <main id="login" class="login" aria-labelledby="loginTitle">
+    <section class="login-card">
+      <span class="login-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M6 18 18 6M9 6h9v9"/></svg></span>
+      <span class="login-kicker">INDIRECTION ADMIN</span>
+      <h1 id="loginTitle">Connect to your links</h1>
+      <p>Enter your management API key to view and edit the redirects on this server.</p>
+      <form id="loginForm">
+        <label for="apiKey">API key</label>
+        <div class="password-wrap">
+          <input id="apiKey" name="apiKey" type="password" required autocomplete="off" placeholder="Enter API key" spellcheck="false">
+          <button type="button" id="showKey" class="show-password" aria-label="Show API key">Show</button>
+        </div>
+        <p role="alert" class="form-error" id="loginError" hidden></p>
+        <button class="button button-primary full-width" id="connectBtn" type="submit">Connect <span aria-hidden="true">→</span></button>
+      </form>
+      <div class="login-note"><svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg> Your key is kept only in this page's memory and is forgotten when you refresh or disconnect.</div>
+    </section>
+  </main>
+
+  <dialog class="drawer" id="editor" aria-labelledby="editorTitle">
+    <div class="drawer-inner">
+      <header class="drawer-header">
+        <div>
+          <span class="drawer-eyebrow" id="editorEyebrow">CREATE REDIRECT</span>
+          <h2 id="editorTitle">New link</h2>
+        </div>
+        <button class="icon-button" id="closeEditor" type="button" aria-label="Close editor"><svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 5 19 19M19 5 5 19"/></svg></button>
+      </header>
+      <form id="editorForm" class="editor-form">
+        <div class="editor-fields">
+          <p class="editor-description">Give this destination a short, memorable address.</p>
+          <label for="code">Short code</label>
+          <div class="code-field"><span id="codePrefix">/</span><input name="code" id="code" placeholder="docs/getting-started" spellcheck="false" autocomplete="off" required></div>
+          <div class="field-help" id="codeHelp">Letters, numbers, and slashes are supported.</div>
+          <label for="destination" class="second-label">Destination URL</label>
+          <textarea name="destination" id="destination" rows="3" required placeholder="https://example.com/a/long/address" spellcheck="false"></textarea>
+          <div class="field-help">The address people will be redirected to.</div>
+          <div class="preview-box">
+            <span>SHORT LINK PREVIEW</span>
+            <strong id="previewUrl">—</strong>
+          </div>
+          <p class="form-error" id="editorError" role="alert" hidden></p>
+        </div>
+        <footer class="drawer-footer">
+          <button type="button" id="deleteBtn" class="button button-danger" hidden>Delete link</button>
+          <span class="footer-spacer"></span>
+          <button type="button" id="cancelEditor" class="button button-secondary">Cancel</button>
+          <button type="submit" id="saveBtn" class="button button-primary">Create link</button>
+        </footer>
+      </form>
+    </div>
+  </dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
