@@ -15,10 +15,14 @@ if (migrate)
     return;
 }
 
+// Serve the static admin SPA without changing API-key authorization.
+app.UseDefaultFiles();
+app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHealthChecks("/health").AllowAnonymous();
+app.MapGet("/admin", () => Results.Redirect("/admin/")).AllowAnonymous();
 await app.RunAsync();
 
 public partial class Program;
