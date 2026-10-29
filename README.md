@@ -85,6 +85,8 @@ dotnet test --project src/test/Indirection.Tests -c Release --no-build \
 
 Coverage includes all handwritten production code, including startup and authentication; only generated EF migration files are excluded. The coverage command and CI enforce at least 96% for both lines and branches. JSON and Cobertura reports are written under `artifacts/coverage`. The separate deployment suite does not contribute to coverage. The explicit SQLite native bundle reference upgrades EF's legacy transitive bundle without suppressing vulnerability warnings.
 
+Admin UI behavior tests use Node's built-in test runner and a small DOM adapter, with no npm packages. Run `node --test src/test/admin-ui/app.test.cjs` with Node 22 or newer. These cover management operations, search/copy, validation, authentication failures, and pending requests during disconnect. Node is needed only for these tests, not to build or run the application.
+
 Deployment verification builds independently and uses only HTTP, with automatic redirects disabled. With the local application still running (or an explicit HTTPS deployment target):
 
 ```bash
@@ -96,7 +98,7 @@ dotnet test --project src/test/Indirection.DeploymentTests -c Release --no-build
 
 The suite checks health and the complete create/read/redirect/update/redirect/delete/404 lifecycle, including mixed casing, nested codes, and warmed-cache updates. Each run uses a unique `synthetic/{guid}/nested` code and cleans up in `finally`, so concurrent runs are isolated. Run this same command after deployment or on a scheduler for synthetics. When neither environment variable is supplied, deployment tests are skipped; supplying only one fails configuration. CI runs only the local suite and never targets a live deployment implicitly.
 
-GitHub Actions runs on pull requests targeting `main` and pushes to `main`. It installs .NET 10, caches NuGet packages using the project/configuration files as the cache key, restores, builds the complete solution in Release, and runs only `Indirection.Tests` with the existing coverage configuration. Both line and branch coverage must reach 96%, exceeding the design's >95% requirement; coverage reports are retained as workflow artifacts.
+GitHub Actions runs on pull requests targeting `main` and pushes to `main`. It installs .NET 10, caches NuGet packages using the project/configuration files as the cache key, restores, builds the complete solution in Release, runs the admin UI behavior tests, and runs `Indirection.Tests` with the existing coverage configuration. Both line and branch coverage must reach 96%, exceeding the design's >95% requirement; coverage reports are retained as workflow artifacts.
 
 Pushing a version tag matching `v*` runs the same validation before publishing a multi-platform image to GHCR and then a GitHub Release. Release creation requires successful tests and Docker publishing. After these workflow changes are committed and pushed, create the first release from the intended commit:
 

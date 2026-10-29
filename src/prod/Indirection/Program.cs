@@ -18,11 +18,14 @@ if (migrate)
 // Serve the static admin SPA without changing API-key authorization.
 app.UseDefaultFiles();
 app.UseStaticFiles();
+// Select endpoints after static files; otherwise /admin/ matches an endpoint
+// before the static-file middleware can serve its default document.
+app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHealthChecks("/health").AllowAnonymous();
-app.MapGet("/admin", () => Results.Redirect("/admin/")).AllowAnonymous();
+app.MapGet("/admin/{**path}", () => Results.NotFound()).AllowAnonymous();
 await app.RunAsync();
 
 public partial class Program;

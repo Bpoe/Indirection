@@ -2,7 +2,7 @@
 'use strict';
 
 const $ = id => document.getElementById(id);
-const state = { apiKey: null, links: [], editing: null, toastTimer: null };
+const state = { apiKey: null, links: [], editing: null, toastTimer: null, session: new AbortController() };
 const endpoint = '/api/v1/links';
 const origin = window.location.origin;
 
@@ -12,8 +12,11 @@ function apiPath(code) {
 }
 
 async function request(path, options = {}) {
+  const { signal } = state.session;
+  if (!state.apiKey) throw new DOMException('Disconnected.', 'AbortError');
   const headers = { 'X-Api-Key': state.apiKey, ...options.headers };
-  const response = await fetch(path, { ...options, headers, cache: 'no-store' });
+  const response = await fetch(path, { ...options, headers, cache: 'no-store', signal });
+  signal.throwIfAborted();
   if (!response.ok) {
     const error = new Error(response.status === 401
       ? 'Invalid API key.'
@@ -22,8 +25,10 @@ async function request(path, options = {}) {
     throw error;
   }
   if (response.status === 204) return null;
-  return response.headers.get('content-type')?.includes('json')
-    ? response.json() : null;
+  const result = response.headers.get('content-type')?.includes('json')
+    ? await response.json() : null;
+  signal.throwIfAborted();
+  return result;
 }
 
 function textNode(tag, className, text) {
@@ -86,6 +91,8 @@ function showApp() {
 }
 
 function showLogin() {
+  state.session.abort();
+  state.session = new AbortController();
   state.apiKey = null;
   state.links = [];
   state.editing = null;
@@ -93,6 +100,14 @@ function showLogin() {
   $('headerRight').hidden = true;
   $('login').hidden = false;
   $('apiKey').value = '';
+  $('apiKey').type = 'password';
+  $('showKey').textContent = 'Show';
+  $('showKey').setAttribute('aria-label', 'Show API key');
+  $('linkRows').replaceChildren();
+  $('search').value = '';
+  $('editorForm').reset();
+  clearTimeout(state.toastTimer);
+  $('toast').hidden = true;
   if ($('editor').open) $('editor').close();
   $('apiKey').focus();
 }
@@ -238,6 +253,7 @@ async function saveLink(event) {
     $('editor').close();
     showToast(state.editing ? 'Link updated' : 'Link created');
   } catch (e) {
+    if (e.name === 'AbortError') return;
     if (e.status === 401) {
       showLogin();
       showError('loginError', 'Your API key is no longer valid.');
@@ -256,6 +272,7 @@ async function deleteLink() {
     $('editor').close();
     showToast('Link deleted');
   } catch (e) {
+    if (e.name === 'AbortError') return;
     if (e.status === 401) {
       showLogin();
       showError('loginError', 'Your API key is no longer valid.');
@@ -265,12 +282,15 @@ async function deleteLink() {
 
 $('loginForm').addEventListener('submit', async event => {
   event.preventDefault();
-  state.apiKey = $('apiKey').value;
+  const apiKey = $('apiKey').value;
+  showLogin();
+  state.apiKey = apiKey;
   $('connectBtn').disabled = true;
   $('connectBtn').textContent = 'Connecting…';
   showError('loginError', '');
   try { await loadLinks(); showApp(); }
   catch (e) {
+    if (e.name === 'AbortError') return;
     state.apiKey = null;
     showError('loginError', e.message || 'Unable to connect.');
   } finally {
@@ -290,6 +310,7 @@ $('refreshBtn').addEventListener('click', async () => {
   $('refreshBtn').disabled = true;
   try { await loadLinks(); showToast('Links refreshed'); }
   catch (e) {
+    if (e.name === 'AbortError') return;
     if (e.status === 401) {
       showLogin();
       showError('loginError', 'Your API key is no longer valid.');

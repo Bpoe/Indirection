@@ -28,6 +28,8 @@ jobs:
             dotnet-tools.json
       - run: dotnet restore Indirection.sln
       - run: dotnet build Indirection.sln -c Release --no-restore
+      - name: Test admin UI behavior
+        run: node --test src/test/admin-ui/app.test.cjs
       - name: Test and enforce line and branch coverage
         run: >-
           dotnet test --project src/test/Indirection.Tests -c Release --no-build
