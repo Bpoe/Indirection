@@ -28,6 +28,25 @@ Indirection optionally loads configuration from `/run/secrets` using ASP.NET Cor
 
 Files take precedence over all standard sources, including command-line arguments. Otherwise, standard precedence is preserved: command-line arguments, environment variables, `appsettings.{Environment}.json`, then `appsettings.json` (highest to lowest). Restart the application after rotating secret files.
 
+### Admin UI
+
+The app includes a tiny, dependency-free browser UI at `/admin` (also `/admin/`).
+The static HTML/CSS/JavaScript lives under `src/prod/Indirection/wwwroot/admin`
+and is included in normal .NET builds, portable releases, and container images.
+No Node runtime, frontend build step, database migration, or extra API endpoint is needed.
+
+Navigate to `https://your-indirection-host/admin` and enter the same API key
+used by the management API. The UI lists, searches, creates, edits, copies, and
+deletes short links using the existing `/api/v1/links` endpoints. Codes can
+contain nested paths; a code itself cannot be renamed.
+
+The page and its static assets are publicly served; **the management API is
+still protected by `X-Api-Key`**. The browser keeps the key only in page memory,
+not cookies or local/session storage; refreshing or disconnecting forgets it.
+Use HTTPS in production. `/admin` and `/admin/*` are reserved for the UI,
+and therefore should not be used as redirect codes. The UI rejects these
+and other known application route collisions.
+
 ### Application behavior
 
 SQLite is the only supported provider. `appsettings.json` defaults to `Data Source=urls.db`; relative SQLite paths resolve against the process working directory. An absolute `ConnectionStrings__Urls` avoids ambiguity between the EF CLI and host. Put the database and its sidecar files on persistent, writable storage and back them up. Apply migrations explicitly before starting/upgrading; the application does not migrate at startup. `dotnet ef migrations has-pending-model-changes --project src/prod/Indirection` checks model drift.
@@ -66,6 +85,8 @@ dotnet test --project src/test/Indirection.Tests -c Release --no-build \
 
 Coverage includes all handwritten production code, including startup and authentication; only generated EF migration files are excluded. The coverage command and CI enforce at least 96% for both lines and branches. JSON and Cobertura reports are written under `artifacts/coverage`. The separate deployment suite does not contribute to coverage. The explicit SQLite native bundle reference upgrades EF's legacy transitive bundle without suppressing vulnerability warnings.
 
+Admin UI behavior tests use Node's built-in test runner and a small DOM adapter, with no npm packages. Run `node --test src/test/admin-ui/app.test.cjs` with Node 22 or newer. These cover management operations, search/copy, validation, authentication failures, and pending requests during disconnect. Node is needed only for these tests, not to build or run the application.
+
 Deployment verification builds independently and uses only HTTP, with automatic redirects disabled. With the local application still running (or an explicit HTTPS deployment target):
 
 ```bash
@@ -77,7 +98,7 @@ dotnet test --project src/test/Indirection.DeploymentTests -c Release --no-build
 
 The suite checks health and the complete create/read/redirect/update/redirect/delete/404 lifecycle, including mixed casing, nested codes, and warmed-cache updates. Each run uses a unique `synthetic/{guid}/nested` code and cleans up in `finally`, so concurrent runs are isolated. Run this same command after deployment or on a scheduler for synthetics. When neither environment variable is supplied, deployment tests are skipped; supplying only one fails configuration. CI runs only the local suite and never targets a live deployment implicitly.
 
-GitHub Actions runs on pull requests targeting `main` and pushes to `main`. It installs .NET 10, caches NuGet packages using the project/configuration files as the cache key, restores, builds the complete solution in Release, and runs only `Indirection.Tests` with the existing coverage configuration. Both line and branch coverage must reach 96%, exceeding the design's >95% requirement; coverage reports are retained as workflow artifacts.
+GitHub Actions runs on pull requests targeting `main` and pushes to `main`. It installs .NET 10, caches NuGet packages using the project/configuration files as the cache key, restores, builds the complete solution in Release, runs the admin UI behavior tests, and runs `Indirection.Tests` with the existing coverage configuration. Both line and branch coverage must reach 96%, exceeding the design's >95% requirement; coverage reports are retained as workflow artifacts.
 
 Pushing a version tag matching `v*` runs the same validation before publishing a multi-platform image to GHCR and then a GitHub Release. Release creation requires successful tests and Docker publishing. After these workflow changes are committed and pushed, create the first release from the intended commit:
 
