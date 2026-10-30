@@ -161,3 +161,104 @@ test('invalid keys and reserved paths produce errors without writing a link', as
   }
   assert.equal(calls.filter(call => call.method).length, 0);
 });
+
+async function connect(app) {
+  app.get('apiKey').value = 'test-key';
+  await app.event('loginForm', 'submit');
+}
+async function editRow(app, index = 0) {
+  await app.get('linkRows').children[index].children[3].children[0].children[1].listeners.click();
+}
+const existingLink = { code: 'docs/start', destination: 'https://example.com/guide' };
+
+for (const staleResponse of ['snapshot', 'unauthorized']) {
+  test(`a superseded refresh ${staleResponse} cannot undo a completed creation`, async () => {
+    const oldRefresh = deferred();
+    let reads = 0;
+    const app = createApp(async (_, options) => {
+      if (options.method === 'PUT') return noContent;
+      if (++reads === 2) return oldRefresh.promise;
+      return json(reads === 1 ? [existingLink] : [existingLink, { code: 'new', destination: 'https://example.com/new' }]);
+    });
+    await connect(app);
+    const refresh = app.event('refreshBtn');
+    await app.event('createBtn');
+    app.get('code').value = 'new';
+    app.get('destination').value = 'https://example.com/new';
+    await app.event('editorForm', 'submit');
+    assert.equal(app.get('linkRows').children.length, 2);
+    oldRefresh.resolve(staleResponse === 'snapshot' ? json([existingLink]) : { ok: false, status: 401 });
+    await refresh;
+    assert.equal(app.get('linkRows').children.length, 2);
+    assert.equal(app.get('app').hidden, false);
+    assert.equal(app.get('toast').textContent, 'Link created');
+  });
+}
+
+for (const operation of ['save', 'delete']) {
+  test(`a pending ${operation} prevents competing writes`, async () => {
+    const mutation = deferred();
+    const writes = [];
+    const app = createApp(async (_, options) => {
+      if (!options.method) return json([existingLink]);
+      writes.push(options.method);
+      return mutation.promise;
+    });
+    await connect(app);
+    await editRow(app);
+    const pending = operation === 'save' ? app.event('editorForm', 'submit') : app.event('deleteBtn');
+    assert.equal(app.get('saveBtn').disabled, true);
+    assert.equal(app.get('deleteBtn').disabled, true);
+    // Invoke handlers directly too: disabled controls alone are insufficient.
+    await app.event('editorForm', 'submit');
+    await app.event('deleteBtn');
+    assert.deepEqual(writes, [operation === 'save' ? 'PUT' : 'DELETE']);
+    mutation.resolve(noContent);
+    await pending;
+    assert.equal(app.get('saveBtn').disabled, false);
+    assert.equal(app.get('deleteBtn').disabled, false);
+  });
+}
+
+for (const outcome of ['success', 'failure']) {
+  test(`a previous save's ${outcome} cannot affect a reopened editor`, async () => {
+    const mutation = deferred();
+    const app = createApp(async (_, options) => options.method ? mutation.promise : json([existingLink]));
+    await connect(app);
+    await editRow(app);
+    const save = app.event('editorForm', 'submit');
+    await app.event('cancelEditor');
+    await app.event('createBtn');
+    app.get('code').value = 'another';
+    app.get('destination').value = 'https://example.com/another';
+    assert.equal(app.get('saveBtn').disabled, true);
+    mutation.resolve(outcome === 'success' ? noContent : { ok: false, status: 500 });
+    await save;
+    assert.equal(app.get('editor').open, true);
+    assert.equal(app.get('code').value, 'another');
+    assert.equal(app.get('destination').value, 'https://example.com/another');
+    assert.equal(app.get('editorError').hidden, true);
+    assert.equal(app.get('saveBtn').disabled, false);
+  });
+}
+
+test('editing preserves an existing alias exactly in previews and write paths', async () => {
+  const link = { code: 'docs ', destination: 'https://example.com/original' };
+  const writes = [];
+  const app = createApp(async (path, options) => {
+    if (!options.method) return json([link]);
+    writes.push({ path, ...options });
+    return noContent;
+  });
+  await connect(app);
+  await editRow(app);
+  assert.equal(app.get('previewUrl').textContent, 'https://short.example/docs%20');
+  app.get('code').value = 'docs'; // Even a changed disabled input must not rename the alias.
+  app.get('destination').value = 'https://example.com/updated';
+  await app.event('editorForm', 'submit');
+  assert.equal(writes[0].path, '/api/v1/links/docs%20');
+  assert.equal(JSON.parse(writes[0].body).destination, 'https://example.com/updated');
+  await editRow(app);
+  await app.event('deleteBtn');
+  assert.equal(writes[1].path, '/api/v1/links/docs%20');
+});

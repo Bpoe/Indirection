@@ -121,10 +121,10 @@ async function loadLinks() {
   let response;
   try { response = await request(endpoint); }
   catch (e) {
-    if (generation !== state.loadGeneration) return;
+    if (generation !== state.loadGeneration) throw new DOMException('Superseded request.', 'AbortError');
     throw e;
   }
-  if (generation !== state.loadGeneration) return;
+  if (generation !== state.loadGeneration) throw new DOMException('Superseded request.', 'AbortError');
   if (!Array.isArray(response)) throw new Error('The server returned an unexpected links response.');
   state.links = response.sort((a, b) => a.code.localeCompare(b.code));
   render();
@@ -229,7 +229,7 @@ function updatePreview() {
 }
 
 function getCode() {
-  return $('code').value.trim().replace(/^\/+|\/+$/g, '');
+  return state.editing?.code ?? $('code').value.trim().replace(/^\/+|\/+$/g, '');
 }
 
 function validateCode(code) {
@@ -257,7 +257,7 @@ async function saveLink(event) {
   event.preventDefault();
   if (state.pendingMutation) return;
   const editorGeneration = state.editorGeneration;
-  const code = state.editing?.code ?? getCode();
+  const code = getCode();
   const destination = $('destination').value.trim();
   const error = validateCode(code);
   if (error) { showError('editorError', error); return; }
