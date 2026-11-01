@@ -107,14 +107,15 @@ Create a `.env` file beside that Compose file containing `INDIRECTION_HOST=go.ex
 ~~~bash
 mkdir -p secrets
 printf '%s' "$(openssl rand -base64 32)" > secrets/indirection-api-key
-chmod 600 secrets/indirection-api-key
+sudo chgrp 1654 secrets/indirection-api-key
+chmod 640 secrets/indirection-api-key
 
 docker compose pull
 docker compose run --rm --no-deps indirection --migrate
 docker compose up -d
 ~~~
 
-Now open `https://go.example.com/admin`. Indirection doesn't publish a host port in this configuration; Traefik reaches it over the shared `proxy` network and handles TLS.
+Now open `https://go.example.com/admin`. Indirection doesn't publish a host port in this configuration; Traefik reaches it over the shared `proxy` network and handles TLS. The secret file is group-readable by the container's non-root user (GID 1654); if you use different container credentials, adjust its ownership accordingly.
 
 ### API key configuration
 
